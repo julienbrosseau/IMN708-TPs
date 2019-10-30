@@ -6,23 +6,26 @@
 # On peut rajouter un courbe d'évolution de SSD pour voir que c'est décroissant
 # Brain1 > Brain4 faire des astuces de reclage sinon ça convergera jamais
 
-print("start \n")
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from matplotlib.colors import LogNorm
 
+path = "../data"
+img1 = "I2.jpg"
+img2 = "J2.jpg"
+
+img1_2d = mpimg.imread(os.path.join(path, img1), 0)
+img2_2d = mpimg.imread(os.path.join(path, img2), 0)
+
+print(img1_2d.shape)
+
+# Histogramme conjoint
 def jointHist(img1, img2, bin):
-    return 0
+    for i in range(np.maximum(img1_2d.shape[0], img1_2d.shape[1])):
+        plt.hist2d(img1[:,i], img2[:,i], bins=bin, norm=LogNorm())
+    plt.show() 
 
-# Histogramme - Bruit présent
-def normalize(arr):
-    arr_min = np.min(arr)
-    return (arr-arr_min)/(np.max(arr)-arr_min)
-
-def show_histogram(values):
-    n, bins, patches = plt.hist(values.reshape(-1), 50, density=1)
-    bin_centers = 0.5 * (bins[:-1] + bins[1:])
-
-    for c, p in zip(normalize(bin_centers), patches):
-        plt.setp(p, 'facecolor', cm.viridis(c))
-
-    plt.show()
-
-#show_histogram(img)
+# Affichage de l histogramme
+jointHist(img1_2d, img2_2d, 50)

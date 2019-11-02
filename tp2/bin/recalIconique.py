@@ -95,6 +95,7 @@ sigma = 4
 debruit_img1 = median_filter(img_2d, sigma)
 debruit_img2 = median_filter(img_test, sigma)
 
+# Recuperation de la mediane de l image
 median = np.median(debruit_img1)
 
 #new_I = translation(debruit_img1, 10, 0)

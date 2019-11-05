@@ -39,32 +39,33 @@ def translation(I, p, q):
 
 def rotation(I, theta):
     nx, ny = I.shape[1], I.shape[0]
-    new_I = np.copy(I)
+    new_I = np.zeros((nx*2, ny*2), dtype=np.uint8)
+    # plt.imshow(new_I)
     matrix = [
         [math.cos(theta), -math.sin(theta), 0],
         [math.sin(theta), math.cos(theta), 0],
         [0, 0, 1]]
-    """
+    
     for i in range(nx):
         for j in range(ny):
             v = [i,j,1]
             v_t = np.dot(matrix, v)
 
             try:    
-                new_I[int(v_t[0]), int(v_t[1])] = I[i, j]
+                new_I[int(v_t[0]+nx), int(v_t[1]+ny)] = I[i, j]
             except:
-                print("pas possible pour ce point",v_t[0], v_t[1])
-    """
+                print("Pas possible pour le point : ",v_t[0], v_t[1])
+    
     X, Y = np.meshgrid(np.arange(0, nx, 1), np.arange(0, ny, 1)) 
 
-    ix = np.random.randint(nx, size=100000)
-    iy = np.random.randint(ny, size=100000)
-    samples = I[iy,ix]
-    new_I = griddata((iy, ix), samples, (Y, X), method='cubic')
+    ix = np.random.randint(nx*2, size=1000000)
+    iy = np.random.randint(ny*2, size=1000000)
+    samples = new_I[iy,ix]
+    new_I = griddata((iy-ny, ix-nx), samples, (Y, X), method='linear')
     
     return new_I
 
-def recalage(img1, img2, median, p, q):
+def recalage(img1, img2, type, median, p, q, theta):
     evol_ssd = []
     iter = 0
 
@@ -72,20 +73,22 @@ def recalage(img1, img2, median, p, q):
     post_ssd = ssd(img1, img2)
     evol_ssd.append(post_ssd)
     
-    while(pre_ssd > post_ssd):        
-        img1 = translation(img1, p, q)
+    while(pre_ssd > post_ssd):  
+        if type == "translation":      
+            img1 = translation(img1, p, q)
+        elif type == "rotation":
+            img1 = rotation(img1, theta)
         
         for i in range(img1.shape[0]):
             for j in range(img1.shape[1]):
                 if math.isnan(img1[i, j]):
                     img1[i, j] = median
-        
         pre_ssd = post_ssd
         post_ssd = ssd(img1, img2)
-        iter += p
+        iter += 1
         evol_ssd.append(post_ssd)
 
-    print(iter)
+    print("Nombre d'iterations :", iter)
            
     return img1, evol_ssd
 
@@ -99,16 +102,19 @@ debruit_img2 = median_filter(img_test, sigma)
 median = np.median(debruit_img1)
 
 #new_I = translation(debruit_img1, 10, 0)
-#new_I = rotation(debruit_img1, 10)
+#new_I = rotation(debruit_img1, 1)
 #print("SSD :", ssd(img_test, img_2d))
 
-new_I, evol_ssd = recalage(debruit_img1, debruit_img2, median, 1, 0)
+new_I, evol_ssd = recalage(debruit_img1, debruit_img2, "translation", median, 1, 0, -0.05)
 print("SSD's :", evol_ssd)
+x = evol_ssd
+y = range(len(evol_ssd))
 
-fig, ax = plt.subplots(ncols=3)
+fig, ax = plt.subplots(nrows=2, ncols=2)
 
-ax[0].imshow(debruit_img1)
-ax[1].imshow(debruit_img2)
-ax[2].imshow(new_I)
+ax[0,0].imshow(debruit_img1)
+ax[0,1].imshow(debruit_img2)
+ax[1,0].imshow(new_I)
+ax[1,1].plot(y, x)
 
 plt.show()

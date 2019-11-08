@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 from scipy import ndimage
 import math
+import cv2 as cv
 
 path = "../data"
 img = "BrainMRI_1.jpg"
@@ -25,6 +26,18 @@ def ssd(img1, img2):
             ssd_totale += (int(img1[i, j]) - int(img2[i, j]))**2
     
     return ssd_totale
+
+def des_gradient(img1, p, q, epsi):
+    sobelx = cv.Sobel(img1,cv.CV_64F,1,0,ksize=5)
+    sobely = cv.Sobel(img1,cv.CV_64F,0,1,ksize=5)
+
+    d_ssd_p = 2*np.sum((img1 - img2)*sobelx)
+    d_ssd_q = 2*np.sum((img1 - img2)*sobely)
+
+    new_p = p - epsi*d_ssd_p
+    new_q = q - epsi*d_ssd_q
+
+    return new_p, new_q
 
 def translation(I, p, q):
     nx, ny = I.shape[1], I.shape[0]
@@ -72,6 +85,8 @@ def recalage(img1, img2, type, median, p, q, theta):
     pre_ssd = math.inf
     post_ssd = ssd(img1, img2)
     evol_ssd.append(post_ssd)
+
+    p, q = des_gradient(img1, 0, 0, 0.00000001)
     
     while(pre_ssd > post_ssd):  
         if type == "translation":      

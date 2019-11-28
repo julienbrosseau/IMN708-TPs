@@ -1,0 +1,9 @@
+1. IRM fonctionnelle
+a.
+- Visualisation de la FFT pour chaque voxel de l'image
+- (Corriger le mouvement (pour le TP, c'est pas demandé mais en théorie il faut le faire))
+- Eliminer les voxels qui ne correspondent pas au cerveau (genre le fond)
+- Faire la corrélation entre le voxel et l'idéale fournit 
+- Visualiser les zones d'activation
+- Filtrer les "fausses" zones d'activation
+En théorie après avoir fait tout ça c'est bon

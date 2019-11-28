@@ -14,16 +14,17 @@ from matplotlib.colors import LogNorm
 
 path = "../data"
 img1 = "I2.jpg"
-img2 = "J2.jpg"
+img2 = "I2.jpg"
 
 img1_2d = mpimg.imread(os.path.join(path, img1), 0)
 img2_2d = mpimg.imread(os.path.join(path, img2), 0)
 
-print(img1_2d.shape)
+print(img1_2d.shape, img2_2d.shape)
 
 # Histogramme conjoint
 def jointHist(img1, img2, bin):
-    for i in range(np.maximum(img1_2d.shape[0], img1_2d.shape[1])):
+    for i in range(img1_2d.shape[1]):
+        #print(i)
         plt.hist2d(img1[:,i], img2[:,i], bins=bin, norm=LogNorm())
     plt.show() 
 

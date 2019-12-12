@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import math
 import os
 from matplotlib import cm
+from scipy import ndimage
 
 class Utils():
 
@@ -18,7 +19,7 @@ class Utils():
         # Ouvre le fichier Nifti "fmri.nii"
         img = nib.load(os.path.join(self.path, self.fmri_file))
         
-        return(img.get_data())
+        return img
 
     def get_ideal(self):
         # Retourne le vecteur "ideal"
@@ -60,3 +61,11 @@ class Utils():
             plt.setp(p, 'facecolor', cm.viridis(c))
 
         plt.show()
+    
+    def median_filter(self, data, sigma):
+        # Filtage médian
+        return ndimage.median_filter(data, size=sigma)
+    
+    def gaussian_filter(self, data, sigma):
+
+        return ndimage.gaussian_filter(data, sigma=sigma)

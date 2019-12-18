@@ -8,8 +8,10 @@ import random
 import scipy
 from skimage.restoration import denoise_nl_means
 from scipy.ndimage import median_filter
-from fury.colormap import line_colors
-from dipy.viz import window, actor
+from dipy.viz import window, actor, colormap, has_fury
+
+from dipy.io.stateful_tractogram import Space, StatefulTractogram
+from dipy.io.streamline import save_trk
 
 # Récupération des informations relatives au fichier image à charger
 path  = "Data"
@@ -22,14 +24,15 @@ print (img_diffusion.shape)
 img_data = img_diffusion.get_data()
 
 # Débruitage avec NLM
-#denoise = np.zeros((img_data.shape[0], img_data.shape[1], img_data.shape[2], img_data.shape[3]), dtype = np.int8)
-#for i in range (img_data.shape[2]):
-#    denoise[:, :, :, i] = denoise_nl_means(img_data[:, :, :, i], 7, 9, 0.08, multichannel = True)
+denoise = np.zeros((img_data.shape[0], img_data.shape[1], img_data.shape[2], img_data.shape[3]), dtype = np.int8)
+for i in range (img_data.shape[2]):
+    denoise[:, :, :, i] = denoise_nl_means(img_data[:, :, :, i], 7, 9, 0.08, multichannel = True)
 
 # Débruitage avec filtre médian
 #for i in range (img_data.shape[2]):
 #    denoise[:, :, :, i] = scipy.signal.medfilt(img_data[:, :, :, i])
-denoise = img_data
+
+#denoise = img_data
 print ("Denoising ok")
 
 # Génération d'un masque et d'une liste de voxels valides selon une intensité minimale donnée en paramètre
@@ -108,7 +111,8 @@ print("Tensors ok")
 def getFA(values):
     up = np.sqrt(((values[0] - values[1]) * (values[0] - values[1])) + ((values[1] - values[2]) * (values[1] - values[2])) + ((values[2] - values[0]) * (values[2] - values[0])))
     down = np.sqrt(values[0] * values[0] + values[1] * values[1] + values[2] * values[2])
-
+    if down == 0:
+        return 0
     return np.sqrt(1 / 2) * (up / down)
 
 # Calcul de toutes les valeurs de FA des voxels valides du masque
@@ -124,7 +128,6 @@ def getFAs(img, mask, tensors):
     return fa
                 
 fa = getFAs(denoise, theMask, tensors)
-fa[np.isnan(fa)] = 0
 fa = np.clip(fa, 0, 1)
 
 fa_save = nib.Nifti1Image(fa, img_diffusion.affine, img_diffusion.header)
@@ -156,7 +159,7 @@ print("ADC ok")
 # Retourne toutes les fibres trouvées selon le masque, les tenseurs et l'angle donnés en paramètre
 def tracto(img, mask, tensors, theta):
     streamlines = []
-    for i in range (10):
+    for i in range (1):
         pos = random.choice(valid_list)
         
         x = int(pos[0])
@@ -164,34 +167,48 @@ def tracto(img, mask, tensors, theta):
         z = int(pos[2])
         chemin = []
 
-        print(fa[x, y, z])
-        print(mask[x, y, z])
 
         while ((fa[x, y, z] >= 0.15) and (mask[x, y, z] == 1)):
-            chemin.append(pos)
+            print("Position : ", x, y, z)
+            chemin.append((x, y, z))
 
             D = tensors[x, y, z]
             eig , vec = np.linalg.eig(getD_(D))
-            x = np.round(x + vec[0])
-            y = np.round(y + vec[1])
-            z = np.round(z + vec[2])
 
-            pos = [x, y, z]
+            x = int(np.round(x + vec[0][0] * 5))                
+            y = int(np.round(y + vec[0][1] * 5))
+            z = int(np.round(z + vec[0][2] * 5))
 
             #flip du vecteur pour partir dans l'autre sens et recommencer en ajoutant les éléments du chemin au début de la liste
 
+        x = chemin[0][0]
+        y = chemin[0][1]
+        z = chemin[0][2]
+
+        while ((fa[x, y, z] >= 0.15) and (mask[x, y, z] == 1)):
+            print("Position : ", x, y, z)
+
+            D = tensors[x, y, z]
+            eig , vec = np.linalg.eig(getD_(D))
+
+            x = int(np.round(x + vec[0][0] * 5))                
+            y = int(np.round(y + vec[0][1] * 5))
+            z = int(np.round(z + vec[0][2] * 5))
+
+            chemin.insert(0, (x, y, z))
+        np.asarray(chemin)
         print(len(chemin))
         streamlines.append(chemin)
-            
+    np.asarray(streamlines)     
     return streamlines
 
 streamlines = tracto(denoise, theMask, tensors, 45)
 
 # Coloriage puis affichage des fibres 
-#color = line_colors(streamlines)
-#streamlines_actor = actor.line(streamlines, line_colors(streamlines))
 
-#r = window.ren()
-#r.add(streamlines_actor)
+r = window.Renderer()
+r.add(actor.line(streamlines, colormap.line_colors(streamlines)))
+window.record(r, out_path='tractogram_deterministic_dg.png',
+                  size=(800, 800))
 
-#window.show(r)
+window.show(r)

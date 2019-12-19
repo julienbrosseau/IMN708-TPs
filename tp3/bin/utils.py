@@ -6,6 +6,7 @@ import math
 import os
 from matplotlib import cm
 from scipy import ndimage
+from astropy.convolution import convolve, Gaussian2DKernel
 
 class Utils():
 
@@ -62,10 +63,12 @@ class Utils():
 
         plt.show()
     
-    def median_filter(self, data, sigma):
-        # Filtage médian
-        return ndimage.median_filter(data, size=sigma)
-    
-    def gaussian_filter(self, data, sigma):
+    def lissage(self, img_4d):
+        # Lissage à chaque temps a l'aide d'une gaussienne
+        gauss_kernel = Gaussian2DKernel(1)
 
-        return ndimage.gaussian_filter(data, sigma=sigma)
+        for i in range(img_4d.shape[3]):
+            for j in range(img_4d.shape[0]):
+                img_4d[j, :, :, i] = convolve(img_4d[j, :, :, i], gauss_kernel) 
+
+        return img_4d

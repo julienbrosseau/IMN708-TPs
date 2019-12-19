@@ -44,6 +44,7 @@ for sl_s in slices_sagittal:
             if img_4d[sl_s, sl_c, sl_a, 0] > 300:
                 #img_median = ut.median_filter(img_4d[sl_s, sl_c, sl_a, :], 5)
                 img_median = ut.gaussian_filter(img_4d[sl_s, sl_c, sl_a, :], 0.9)
+                
                 # Correlation entre l'ideale et notre image
                 corr2 = ut.get_corr2(ideal_data, img_median.real)
 

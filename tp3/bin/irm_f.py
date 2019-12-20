@@ -30,11 +30,9 @@ for sl_s in slices_sagittal:
     for sl_c in slices_coronal:
         for sl_a in slices_axial:
             img_tps = img_4d[sl_s, sl_c, sl_a, :]
-            #print(img_tps)
 
             # On visualise la FFT pour chaque voxel
             sp = np.fft.fft(img_tps)
-            #plt.plot(freq, fft.real)
             
             # On enleve les fréquences correspondant au coeur
             for i, f in enumerate(freq):
@@ -51,10 +49,7 @@ for sl_s in slices_sagittal:
 
                 # On recupere seulement les voxels qui "enregistrent" l'activité
                 if np.abs(corr2) > 0.5:
-                    #print("Correlation entre 'ideal' et le voxel :", format(corr2, '.2f'), "% pour le voxel :", sl_s, sl_c, sl_a)
-                    #plt.plot(time, smoothed)
                     active_area.append([sl_s, sl_c, sl_a, format(corr2, '.2f')])
-                    #print(img_4d[sl_s, sl_c, sl_a, 0])
                     img_4d[sl_s, sl_c, sl_a, 0] = 2000
 
             else:

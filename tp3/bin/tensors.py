@@ -15,7 +15,7 @@ ANGLE_MAX_LEFT = 0.785398 # 45° en rad
 ANGLE_MAX_RIGHT = 2.35619 # 135° en rad
 
 # Récupération des informations relatives au fichier image à charger
-path  = "Data"
+path  = "../data"
 file  = sys.argv[1]
 
 # Chargement de l'image

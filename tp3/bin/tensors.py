@@ -8,10 +8,11 @@ import random
 import scipy
 from skimage.restoration import denoise_nl_means
 from scipy.ndimage import median_filter
-from dipy.viz import window, actor, colormap, has_fury
+from dipy.viz import window, actor
+from fury.colormap import line_colors
 
-from dipy.io.stateful_tractogram import Space, StatefulTractogram
-from dipy.io.streamline import save_trk
+ANGLE_MAX_LEFT = 0.785398 # 45° en rad
+ANGLE_MAX_RIGHT = 2.35619 # 135° en rad
 
 # Récupération des informations relatives au fichier image à charger
 path  = "Data"
@@ -22,18 +23,6 @@ img_diffusion = nib.load(os.path.join(path, file))
 print (img_diffusion.shape)
 
 img_data = img_diffusion.get_data()
-
-# Débruitage avec NLM
-denoise = np.zeros((img_data.shape[0], img_data.shape[1], img_data.shape[2], img_data.shape[3]), dtype = np.int8)
-for i in range (img_data.shape[2]):
-    denoise[:, :, :, i] = denoise_nl_means(img_data[:, :, :, i], 7, 9, 0.08, multichannel = True)
-
-# Débruitage avec filtre médian
-#for i in range (img_data.shape[2]):
-#    denoise[:, :, :, i] = scipy.signal.medfilt(img_data[:, :, :, i])
-
-#denoise = img_data
-print ("Denoising ok")
 
 # Génération d'un masque et d'une liste de voxels valides selon une intensité minimale donnée en paramètre
 def getMask(low_intensity):
@@ -58,10 +47,14 @@ def getB(bValuesFileName):
 
     B = []
     for i in range (1, len(bValues)):
-        B.append([bValues[i][0] * bValues[i][0], bValues[i][0] * bValues[i][1], bValues[i][0] * bValues[i][2], 
-                bValues[i][1] * bValues[i][1], bValues[i][1] * bValues[i][2], bValues[i][2] * bValues[i][2]])
+        B.append([bValues[i][0] * bValues[i][0], 
+                  2 * bValues[i][0] * bValues[i][1], 
+                  2 * bValues[i][0] * bValues[i][2], 
+                  bValues[i][1] * bValues[i][1], 
+                  2 * bValues[i][1] * bValues[i][2], 
+                  bValues[i][2] * bValues[i][2]])
 
-    return B, bValues[1][3]
+    return B, int(bValues[1][3])
 
 # Calcul de la valeur du tenseur D pour un voxel x, y, z et une bValue donnés
 def getD(x, y, z, B, bValue):
@@ -73,15 +66,9 @@ def getD(x, y, z, B, bValue):
         if s == 0 or S0 == 0:
             return [0, 0, 0, 0, 0, 0]
         else:
-            X.append((-1 / bValue) * math.log(s / S0))
+            X.append(math.log(s / S0))
 
-    return np.dot(np.linalg.inv(np.dot(np.transpose(B), B)), np.dot(np.transpose(B), X))
-
-B, bValue = getB(path + "/gradient_directions_b-values.txt")
-print ("B & bValue ok")
-
-theMask, valid_list = getMask(100)
-print("Mask ok")
+    return np.linalg.solve(np.dot(np.transpose(B), B), np.dot(np.transpose(B), (-1 / bValue) * np.transpose(X)))
 
 # Reconstitution de la matrice D barre avec la matrice D[xx, xy, xz, yy, yz, zz]
 def getD_(D):
@@ -99,17 +86,11 @@ def getTensors(img, mask):
                     tensors[x][y][z] = getD(x, y, z, B, bValue)
     return tensors
 
-tensors = getTensors(denoise, theMask)
-
-# Save du maping de tenseurs dans un fichier nifti
-tensors_save = nib.Nifti1Image(tensors, img_diffusion.affine, img_diffusion.header)
-nib.save(tensors_save, "tensors.nii.gz")
-
-print("Tensors ok")
-
 # Calcul de la FA selon les valeurs propres passées en paramètre
 def getFA(values):
-    up = np.sqrt(((values[0] - values[1]) * (values[0] - values[1])) + ((values[1] - values[2]) * (values[1] - values[2])) + ((values[2] - values[0]) * (values[2] - values[0])))
+    up = np.sqrt(((values[0] - values[1]) * (values[0] - values[1])) + 
+                 ((values[1] - values[2]) * (values[1] - values[2])) + 
+                 ((values[2] - values[0]) * (values[2] - values[0])))
     down = np.sqrt(values[0] * values[0] + values[1] * values[1] + values[2] * values[2])
     if down == 0:
         return 0
@@ -126,15 +107,6 @@ def getFAs(img, mask, tensors):
                     eig , vec = np.linalg.eig(getD_(D))
                     fa[x, y, z] = getFA(eig)
     return fa
-                
-fa = getFAs(denoise, theMask, tensors)
-fa = np.clip(fa, 0, 1)
-
-fa_save = nib.Nifti1Image(fa, img_diffusion.affine, img_diffusion.header)
-nib.save(fa_save, "fa.nii.gz")
-
-print("FA ok")
-#print (fa)
 
 # Calcul de toutes les valeurs d'ADC des voxels valides du masque
 def getADC(img, mask, tensors):
@@ -148,67 +120,161 @@ def getADC(img, mask, tensors):
                     adc[x][y][z] = np.mean(eig)
     return adc
 
+def getAngleFromVec(v1, v2):
+    v1_u = v1 / np.linalg.norm(v1)
+    v2_u = v2 / np.linalg.norm(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
+# Débruitage avec NLM
+denoise = np.zeros((img_data.shape[0], img_data.shape[1], img_data.shape[2], img_data.shape[3]), dtype = np.int8)
+#for i in range (img_data.shape[2]):
+#    denoise[:, :, :, i] = denoise_nl_means(img_data[:, :, :, i], 7, 9, 0.08, multichannel = True)
+
+# Débruitage avec filtre médian
+for i in range (img_data.shape[2]):
+    denoise[:, :, :, i] = scipy.ndimage.median_filter(img_data[:, :, :, i], 3)
+
+#np.save("saves/denoise", denoise)
+denoise = np.load("saves/denoise.npy")
+print ("Débruitage terminé")
+
+B, bValue = getB(path + "/gradient_directions_b-values.txt")
+print ("Calcul de B & bValue terminé")
+
+theMask, valid_list = getMask(150)
+print("Calcul du masque terminé")
+
+mask_save = nib.Nifti1Image(theMask, img_diffusion.affine, img_diffusion.header)
+nib.save(mask_save, "mask.nii.gz")
+
+tensors = getTensors(denoise, theMask)
+
+# Save du maping de tenseurs dans un fichier nifti
+tensors_save = nib.Nifti1Image(tensors, img_diffusion.affine, img_diffusion.header)
+nib.save(tensors_save, "tensors.nii.gz")
+
+np.save("saves/tensors", tensors)
+#tensors = np.load("saves/tensors.npy")
+print("Calcul des tenseurs terminé")
+                
+fa = getFAs(denoise, theMask, tensors)
+fa = np.clip(fa, 0, 1)
+
+fa_save = nib.Nifti1Image(fa, img_diffusion.affine, img_diffusion.header)
+nib.save(fa_save, "fa.nii.gz")
+np.save("saves/fa", fa)
+#fa = np.load("saves/fa.npy")
+
+print("Calcul de la FA terminé")
+
 #adc = getADC(denoise, theMask, tensors)
 #adc_save = nib.Nifti1Image(adc, img_diffusion.affine, img_diffusion.header)
 #nib.save(adc_save, "adc.nii.gz")
 
-print("ADC ok")
+print("Calcul de l'ADC terminé")
 
 ########### TRACTO ###########
 
 # Retourne toutes les fibres trouvées selon le masque, les tenseurs et l'angle donnés en paramètre
 def tracto(img, mask, tensors, theta):
     streamlines = []
-    for i in range (1):
+    for i in range (100000):
         pos = random.choice(valid_list)
+        #pos = [65, 78, 29]
+        x = int(pos[0])
+        y = int(pos[1])
+        z = int(pos[2])
+
+        chemin = []
+
+        D = tensors[x, y, z]
+        eig , vec = np.linalg.eig(getD_(D))
+
+        max_index = np.argmax(eig)
+        currentVec = vec[:, max_index]
+        oldVec = currentVec
+
+        floatx = x
+        floaty = y
+        floatz = z
+
+        # Si la FA est > 0.15, si on est toujours dans le masque et si l'angle est valide (entre 0 et 45° ou > 135 (faut flip))
+        while ((fa[x, y, z] >= 0.15) and (mask[x, y, z] == 1) and (getAngleFromVec(oldVec, currentVec) <= ANGLE_MAX_LEFT or getAngleFromVec(oldVec, currentVec) >= ANGLE_MAX_RIGHT)):
+            chemin.append([floatx, floaty, floatz])
+
+            # Si l'angle est > 135° cela signifie que le vecteur n'est pas dans le bon sens, on le retourne donc
+            if(getAngleFromVec(oldVec, currentVec) >= ANGLE_MAX_RIGHT):
+                currentVec = currentVec * -1
+
+            floatx += currentVec[0] * 2
+            floaty += currentVec[1] * 2
+            floatz += currentVec[2] * 2
+
+            x = int(np.round(floatx))                
+            y = int(np.round(floaty))
+            z = int(np.round(floatz))
+            
+            # Si les x, y et z calculés sont toujours dans le masque, on continue
+            if (x > -1 and x < img.shape[0] and y > -1 and y < img.shape[1] and z > -1 and z < img.shape[2]):
+                D = tensors[x, y, z]
+                eig , vec = np.linalg.eig(getD_(D))
+
+                # Mise à jour de l'ancien vecteur et de l'actuel pour comparer les angles
+                oldVec = currentVec
+                max_index = np.argmax(eig)
+                currentVec = vec[:, max_index]
+            else:
+                break
+
         
         x = int(pos[0])
         y = int(pos[1])
         z = int(pos[2])
-        chemin = []
 
+        floatx = x
+        floaty = y
+        floatz = z
 
-        while ((fa[x, y, z] >= 0.15) and (mask[x, y, z] == 1)):
-            print("Position : ", x, y, z)
-            chemin.append((x, y, z))
+        D = tensors[x, y, z]
+        max_index = np.argmax(eig)
+        currentVec = -1 * vec[:, max_index]
+        oldVec = currentVec
 
-            D = tensors[x, y, z]
-            eig , vec = np.linalg.eig(getD_(D))
+        while ((fa[x, y, z] >= 0.15) and (mask[x, y, z] == 1) and (getAngleFromVec(oldVec, currentVec) <= ANGLE_MAX_LEFT or getAngleFromVec(oldVec, currentVec) >= ANGLE_MAX_RIGHT)):
 
-            x = int(np.round(x + vec[0][0] * 5))                
-            y = int(np.round(y + vec[0][1] * 5))
-            z = int(np.round(z + vec[0][2] * 5))
+            if(getAngleFromVec(oldVec, currentVec) >= ANGLE_MAX_RIGHT):
+                currentVec = currentVec * -1
 
-            #flip du vecteur pour partir dans l'autre sens et recommencer en ajoutant les éléments du chemin au début de la liste
+            floatx += currentVec[0] * 2
+            floaty += currentVec[1] * 2
+            floatz += currentVec[2] * 2
 
-        x = chemin[0][0]
-        y = chemin[0][1]
-        z = chemin[0][2]
+            x = int(np.round(floatx))                
+            y = int(np.round(floaty))
+            z = int(np.round(floatz))
 
-        while ((fa[x, y, z] >= 0.15) and (mask[x, y, z] == 1)):
-            print("Position : ", x, y, z)
+            if (x > -1 and x < img.shape[0] and y > -1 and y < img.shape[1] and z > -1 and z < img.shape[2]):
+                D = tensors[x, y, z]
+                eig , vec = np.linalg.eig(getD_(D))
 
-            D = tensors[x, y, z]
-            eig , vec = np.linalg.eig(getD_(D))
+                oldVec = currentVec
+                max_index = np.argmax(eig)
+                currentVec = vec[:, max_index]
+            else:
+                break
 
-            x = int(np.round(x + vec[0][0] * 5))                
-            y = int(np.round(y + vec[0][1] * 5))
-            z = int(np.round(z + vec[0][2] * 5))
-
-            chemin.insert(0, (x, y, z))
-        np.asarray(chemin)
-        print(len(chemin))
-        streamlines.append(chemin)
-    np.asarray(streamlines)     
+            chemin.insert(0, [floatx, floaty, floatz])
+        
+        if len(chemin) > 8:
+            streamlines.append(np.array(chemin))
     return streamlines
 
-streamlines = tracto(denoise, theMask, tensors, 45)
+streamlines = tracto(denoise, theMask, tensors, 90)
 
+#print(streamlines)
 # Coloriage puis affichage des fibres 
 
-r = window.Renderer()
-r.add(actor.line(streamlines, colormap.line_colors(streamlines)))
-window.record(r, out_path='tractogram_deterministic_dg.png',
-                  size=(800, 800))
+r = window.ren()
+r.add(actor.line(streamlines, line_colors(streamlines)))
 
 window.show(r)
